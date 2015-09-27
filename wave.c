@@ -90,13 +90,16 @@ int main(int argc, char *argv[])
   int k=0, npoints;
   int first, npts;
   p_DynamicMutex = (pthread_mutex_t*) malloc (NUMTASKS*sizeof(pthread_mutex_t));
-  pthread_mutex_lock(&p_DynamicMutex[0]);
-  int iRC = pthread_mutex_init (p_DynamicMutex, NULL);
-
-  if (iRC != 0)
-  {
-    return 0;
+  
+  for(i=0; i<NUMTASKS; i++){
+    int iRC = pthread_mutex_init (&p_DynamicMutex[0], NULL);
   }
+
+  // if (iRC != 0)
+  // {
+  //   printf("fail\n");
+  //   return 0;
+  // }
 
 
   for(i=0; i<NUMTASKS; i++)
