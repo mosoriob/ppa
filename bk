@@ -1,0 +1,55 @@
+
+void init_line(id) {
+
+  int nmin, nleft, npts, i, j, k;
+  double x, fac;
+
+  /* calculate initial values based on sine curve */
+  nmin = TPOINTS/numtasks;
+  nleft = TPOINTS%numtasks;
+  fac = 2.0 * PI;
+  for (i = 0, k = 0; i < numtasks; i++) {
+  npts = (i < nleft) ? nmin + 1 : nmin;
+  if (id == i) {
+    printf("Para el proceso %d en la iteracion %d \n ", id, i);
+    first = k + 1;
+    npoints = npts;
+    printf ("task=%3d  first point=%5d  npoints=%4d\n", id,        first, npts);
+  for (j = 1; j <= npts; j++, k++) {
+    x = (double)k/(double)(TPOINTS - 1);
+    values[j] = sin (fac * x);
+    } 
+  }
+  else 
+    k += npts;
+  }
+  for (i = 1; i <= npoints; i++) 
+    oldval[i] = values[i];
+}
+
+void update(int id) {
+  printf("Thread, firsh: %d, %d \n", id);
+
+   int i, j;
+   double dtime, c, dx, tau, sqtau;
+   dtime = 0.3;  
+   c = 1.0;
+   dx = 1.0;
+   tau = (c * dtime / dx);
+   sqtau = tau * tau;
+   for (int i = 0; i < nsteps; i++)
+   {
+
+     /* Update points along line */
+     for (j = 1; j <= npoints; j++) {
+        /* Global endpoints */
+        if ((first + j - 1 == 1) || (first + j - 1 == TPOINTS))
+           newval[j] = 0.0;
+        else{
+          if(first==j){
+            printf("Punto conflicto: %d \n", j );
+          }
+        }
+     }
+   }
+}

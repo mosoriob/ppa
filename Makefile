@@ -1,2 +1,2 @@
 all:
-	gcc -pthread -I/usr/include/malloc/ -o thread thread.c
+	gcc -pthread -I/usr/include/malloc/ -o wave wave.c
