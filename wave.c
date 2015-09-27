@@ -28,15 +28,28 @@ typedef struct thread {
 void update(int id, int first, int step){
   //printf("Tengo que updatear los puntos %d a %d \n", first, (first+step) );
   printf("Thread %d, p.n. %d p.c.  %d \n", id, first-1, first);
-  int j;
+  int j, mutex_exit;
   printf("first= %d - %d \n", first-1, (first+step-2));
   for (j = first-1; j <= (first-1+step); j++) {
      if (j == 0 || j == (TPOINTS-1)){
       printf("valores zero\n");
      }
      else{
-      if(j==(first-1))
-        printf("DEPENDENCIA con %d\n", j-1);
+      if(j==(first-1)){
+        printf("DEPENDENCIA con %d - haciendo un lock %d \n", j-1,id-1);
+        mutex_exit = pthread_mutex_lock(&p_DynamicMutex[id-1]);
+        if (mutex_exit != 0)
+          printf("mutex %d fail\n", id-1);
+        else
+          printf("mutex %d correcto\n", id-1);
+
+        mutex_exit = pthread_mutex_unlock(&p_DynamicMutex[id-1]);
+        if (mutex_exit != 0)
+          printf("mutex %d fail\n", id-1);
+        else
+          printf("mutex desbloqueado %d correcto\n", id-1);
+        
+      }
      }
    }
         /* Use wave equation to update points */
@@ -92,15 +105,13 @@ int main(int argc, char *argv[])
   p_DynamicMutex = (pthread_mutex_t*) malloc (NUMTASKS*sizeof(pthread_mutex_t));
   
   for(i=0; i<NUMTASKS; i++){
-    int iRC = pthread_mutex_init (&p_DynamicMutex[0], NULL);
+    int iRC = pthread_mutex_init (&p_DynamicMutex[i], NULL);
+    if (iRC != 0)
+    {
+      printf("fail\n");
+      return 0;
+    }
   }
-
-  // if (iRC != 0)
-  // {
-  //   printf("fail\n");
-  //   return 0;
-  // }
-
 
   for(i=0; i<NUMTASKS; i++)
   {
