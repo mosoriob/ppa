@@ -3,17 +3,20 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <math.h>
+
 #define MASTER 0
 #define TPOINTS 800
 #define MAXSTEPS  10000
 #define PI 3.14159265
-#define NUMTASKS 7
+#define NUMTASKS 4
 
 double  etime,                /* elapsed time in seconds */
   values[TPOINTS+2],  /* values at time t */
   oldval[TPOINTS+2],  /* values at time (t-dt) */
   newval[TPOINTS+2];  /* values at time (t+dt) */
 
+
+pthread_mutex_t* p_DynamicMutex;
 
 typedef struct thread {   
      pthread_t thread_id;       
@@ -22,6 +25,32 @@ typedef struct thread {
      int       thread_first;
 } ThreadData;
 
+void update(int id, int first, int step){
+  //printf("Tengo que updatear los puntos %d a %d \n", first, (first+step) );
+  printf("Thread %d, p.n. %d p.c.  %d \n", id, first-1, first);
+  int j;
+  printf("first= %d - %d \n", first-1, (first+step-2));
+  for (j = first-1; j <= (first-1+step); j++) {
+     if (j == 0 || j == (TPOINTS-1)){
+      printf("valores zero\n");
+     }
+     else{
+      if(j==(first-1))
+        printf("DEPENDENCIA con %d\n", j-1);
+     }
+   }
+        /* Use wave equation to update points */
+       // newval[j] = (2.0 * values[j]) - oldval[j]
+       //    + (sqtau * (values[j-1] - (2.0 * values[j]) + values[j+1]));
+    
+  // for (j = 1; j <= npoints; j++) {
+  //    oldval[j] = values[j];
+  //    values[j] = newval[j];
+  //    }
+  // }
+  //printf("Punto para el vecino %d \n", step);
+
+}
 void *thread_start(void *thread)
 {
  ThreadData *my_data  = (ThreadData*)thread;
@@ -35,7 +64,8 @@ void *thread_start(void *thread)
   for (j=first; j <= (first+step); j++){
     x = (double)j/(double)(TPOINTS - 1);
     values[j] = sin (fac * x);
-  } 
+  }
+  update(id,first,step);
 
   if (id == NUMTASKS-1)
     right = 0;
@@ -59,6 +89,14 @@ int main(int argc, char *argv[])
   int nleft = TPOINTS%NUMTASKS;
   int k=0, npoints;
   int first, npts;
+  p_DynamicMutex = (pthread_mutex_t*) malloc (NUMTASKS*sizeof(pthread_mutex_t));
+  pthread_mutex_lock(&p_DynamicMutex[0]);
+  int iRC = pthread_mutex_init (p_DynamicMutex, NULL);
+
+  if (iRC != 0)
+  {
+    return 0;
+  }
 
 
   for(i=0; i<NUMTASKS; i++)
@@ -76,8 +114,7 @@ int main(int argc, char *argv[])
   //wait for all threads
   for (i = 0; i < NUMTASKS; i++)
      pthread_join(thread[i].thread_id, NULL); 
-  for (i = 0; i < TPOINTS; i++)
-    printf("%f \n", values[i]);
+
   //for (i = 0; i < NUMTASKS; i++)
   //   printf(" %i)thread: number %i\n",i,thread[i].thread_num);
   return 0;
