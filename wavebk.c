@@ -16,10 +16,6 @@ int debug=0;
 pthread_mutex_t* mutex;
 pthread_cond_t* cond;
 
-pthread_barrier_t barrier_calc;
-
-
-
 typedef struct thread {   
      pthread_t thread_id;       
      int       thread_num;
