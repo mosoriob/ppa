@@ -5,18 +5,16 @@
 #include <math.h>
 
 #define MASTER 0
-#define TPOINTS 800
-#define MAXSTEPS  10000
 #define PI 3.14159265
-#define NUMTASKS 4
-
-double  etime,                /* elapsed time in seconds */
-  values[TPOINTS+2],  /* values at time t */
-  oldval[TPOINTS+2],  /* values at time (t-dt) */
-  newval[TPOINTS+2];  /* values at time (t+dt) */
 
 
-pthread_mutex_t* p_DynamicMutex;
+
+int numtasks;
+int npoints;
+int times;
+int debug=0;
+pthread_mutex_t* mutex;
+pthread_cond_t* cond;
 
 typedef struct thread {   
      pthread_t thread_id;       
@@ -25,96 +23,143 @@ typedef struct thread {
      int       thread_first;
 } ThreadData;
 
-void update(int id, int first, int step){
-  //printf("Tengo que updatear los puntos %d a %d \n", first, (first+step) );
-  printf("Thread %d, p.n. %d p.c.  %d \n", id, first-1, first);
-  int j, mutex_exit;
-  printf("first= %d - %d \n", first-1, (first+step-2));
-  for (j = first-1; j <= (first-1+step); j++) {
-     if (j == 0 || j == (TPOINTS-1)){
-      printf("valores zero\n");
-     }
-     else{
-      if(j==(first-1)){
-        printf("DEPENDENCIA con %d - haciendo un lock %d \n", j-1,id-1);
-        mutex_exit = pthread_mutex_lock(&p_DynamicMutex[id-1]);
-        if (mutex_exit != 0)
-          printf("mutex %d fail\n", id-1);
-        else
-          printf("mutex %d correcto\n", id-1);
+int **states;
+double *values, *oldval, *newval;
 
-        mutex_exit = pthread_mutex_unlock(&p_DynamicMutex[id-1]);
-        if (mutex_exit != 0)
-          printf("mutex %d fail\n", id-1);
-        else
-          printf("mutex desbloqueado %d correcto\n", id-1);
-        
-      }
-     }
-   }
-        /* Use wave equation to update points */
-       // newval[j] = (2.0 * values[j]) - oldval[j]
-       //    + (sqtau * (values[j-1] - (2.0 * values[j]) + values[j+1]));
-    
-  // for (j = 1; j <= npoints; j++) {
-  //    oldval[j] = values[j];
-  //    values[j] = newval[j];
-  //    }
-  // }
-  //printf("Punto para el vecino %d \n", step);
-
+int** create_array( int X, int Y ){
+  int **array,i;
+  array = (int**) malloc( X * sizeof(int*) );
+  for(i=0; i< X; i++) 
+    array[i] = (int*) malloc( Y* sizeof(int) );
+  return array;
 }
+
+
+void update(int id, int first, int step){
+  int j;
+
+  double dtime = 0.3;  
+  double c = 1.0;
+  double dx = 1.0;
+  double tau = (c * dtime / dx);
+  double sqtau = tau * tau;
+
+
+  for (int i = 0; i < times; i++){
+    for (j = first-1; j <= (first-1+step); j++){
+      if(j==(first-2+step)){ 
+        pthread_mutex_lock(&mutex[id]);
+        states[id][i]=1;
+        pthread_mutex_unlock(&mutex[id]);
+        pthread_cond_signal(&cond[id]);
+      }
+      if(j==(first-1) && j!=0){
+        while(states[id-1][i]==0){
+          pthread_cond_wait(&cond[id-1], &mutex[id-1]);
+          states[id-1][i]=1;
+        }
+      }
+    }
+
+    //Condicion de borde izquierda
+    if(j==0){
+      newval[j] = (2.0 * values[j]) - oldval[j] 
+         + (sqtau * (values[j] - (2.0 * values[j]) + values[j+1]));
+    }
+
+    //Condicion de borde derecha
+    else if(j==npoints-1){
+      newval[j] = (2.0 * values[j]) - oldval[j] 
+        + (sqtau * (values[j-1] - (2.0 * values[j]) + values[j])); 
+    }
+
+    //Caso genericos
+    else{
+     newval[j] = (2.0 * values[j]) - oldval[j] 
+         + (sqtau * (values[j-1] - (2.0 * values[j]) + values[j+1]));
+    }
+
+  }
+}
+
+
 void *thread_start(void *thread)
 {
- ThreadData *my_data  = (ThreadData*)thread;
- int id=my_data->thread_num;
- int step=my_data->thread_step;
- int first=my_data->thread_first;
- int left, right;
- int j;
- double x, fac = 2.0 * PI;
+  ThreadData *my_data  = (ThreadData*)thread;
+  int id=my_data->thread_num;
+  int step=my_data->thread_step;
+  int first=my_data->thread_first;
+  int j;
+  double x, fac = 2.0 * PI;
 
+  //Inicia la onda en la sin(x)
   for (j=first; j <= (first+step); j++){
-    x = (double)j/(double)(TPOINTS - 1);
+    x = (double)j/(double)(npoints - 1);
     values[j] = sin (fac * x);
   }
+
+  for (j=first; j <= (first+step); j++){
+     oldval[j] = values[j];
+  }
+
+  //Hacer la iteración de los putnos
   update(id,first,step);
 
-  if (id == NUMTASKS-1)
-    right = 0;
-  else
-    right = id + 1;
+  if(debug)
+    printf("Termina el thread %d \n", id);
 
-  if (id == 0)
-   left = NUMTASKS - 1;
-  else
-    left = id - 1;
-
- printf("thread %d: step=%d, left: %d, right: %d \n", id, step, left, right);
- return NULL;
+  return NULL;
 }
 
 int main(int argc, char *argv[])
 {
-  int i;
-  ThreadData thread[NUMTASKS]; 
-  int nmin = TPOINTS/NUMTASKS;
-  int nleft = TPOINTS%NUMTASKS;
-  int k=0, npoints;
-  int first, npts;
-  p_DynamicMutex = (pthread_mutex_t*) malloc (NUMTASKS*sizeof(pthread_mutex_t));
-  
-  for(i=0; i<NUMTASKS; i++){
-    int iRC = pthread_mutex_init (&p_DynamicMutex[i], NULL);
-    if (iRC != 0)
-    {
-      printf("fail\n");
+
+  if( argc != 5){
+    printf("faltan args\n");
+      exit(0);
+  }
+  else{
+      npoints = atoi(argv[1]);
+      numtasks = atoi(argv[2]);
+      times = atoi(argv[3]);
+      debug = atoi(argv[4]);
+  }
+
+  ThreadData thread[numtasks]; 
+  int i, first, npts;
+  int k=0;
+  int nmin = npoints/numtasks;
+  int nleft = npoints%numtasks;
+
+  mutex = (pthread_mutex_t*) malloc (numtasks*sizeof(pthread_mutex_t));
+  cond = (pthread_cond_t*) malloc (numtasks*sizeof(pthread_cond_t));
+  values = (double*) malloc (npoints*sizeof(double));
+  oldval = (double*) malloc (npoints*sizeof(double));
+  newval = (double*) malloc (npoints*sizeof(double));
+
+  int X = numtasks;
+  int Y = times;
+  states = create_array(X,Y);
+  for(int i=0; i< X; i++){
+    for(int j=0; j< Y; j++){
+      if(j==0){
+        states[i][j] = 1;
+      }
+      states[i][j] = 0;
+    }
+  }
+
+  for(i=0; i<numtasks; i++){
+    int iRC = pthread_mutex_init (&mutex[i], NULL);
+    int iRCc = pthread_cond_init (&cond[i], NULL);
+    if (iRC != 0 || iRCc !=0){
+      printf("Problema al iniciar mutex\n");
       return 0;
     }
   }
 
-  for(i=0; i<NUMTASKS; i++)
-  {
+  //Calculo de steps
+  for(i=0; i<numtasks; i++){
     npts = (i < nleft) ? nmin + 1 : nmin;
     first = k + 1;
     npoints = npts;
@@ -125,11 +170,17 @@ int main(int argc, char *argv[])
     pthread_create(&(thread[i].thread_id), NULL, thread_start, (void *)(thread+i));
   }
 
-  //wait for all threads
-  for (i = 0; i < NUMTASKS; i++)
+  for (i = 0; i < numtasks; i++)
      pthread_join(thread[i].thread_id, NULL); 
 
-  //for (i = 0; i < NUMTASKS; i++)
-  //   printf(" %i)thread: number %i\n",i,thread[i].thread_num);
+  free(mutex);
+  free(cond);
+  for(int i=0; i< X; i++)
+    free(states[i]);
+  free(states);
+  free(values);
+  free(oldval);
+  free(newval);
+
   return 0;
 }
